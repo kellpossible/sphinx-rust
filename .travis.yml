@@ -7,7 +7,7 @@ install:
   - "pip install travis-sphinx"
 
 script:
-  - "travis-sphinx build"
+  - "travis-sphinx build --source=doc"
 
 after_success:
   - "travis-sphinx deploy"
