@@ -1,9 +1,7 @@
 import sys
 import os
 import sphinx_rtd_theme
-
-
-sys.path.append(os.path.abspath('extensions'))
+import sphinxrust
 
 
 project = 'sphinxrust'
