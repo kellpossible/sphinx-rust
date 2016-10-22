@@ -67,5 +67,3 @@ class RustModelNode(RustModel, nodes.Element):
         obj.children = [c for c in self.children]
         #obj.parent = self.parent
         return obj
-
-class 
