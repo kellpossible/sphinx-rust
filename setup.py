@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name = "sphinxrust",
+    name = "sphinx-rust",
     packages = ["sphinxrust"],
     version = "0.1",
     author = "Luke Frisken",
@@ -24,10 +24,10 @@ setup(
     ],
     long_description = """\
 ==========
-sphinxrust
+sphinx-rust
 ==========
 
-sphinxrust is a Sphinx extension which adds support for rust language directives,
+sphinx-rust is a Sphinx extension which adds support for rust language directives,
 and external references to rust api documentation.
 """
 )
