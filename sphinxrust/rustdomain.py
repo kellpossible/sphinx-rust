@@ -1,3 +1,19 @@
+#
+# Copyright 2012-2016 Luke Frisken, Bronto Software, Inc. and contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
@@ -11,7 +27,7 @@ from sphinx.util.docfields import Field, GroupedField, TypedField
 from sphinx.util.docfields import DocFieldTransformer
 from sphinx.directives import ObjectDescription
 from sphinx.locale import l_, _
-import javasphinx.formatter as formatter
+import sphinxrust.formatter as formatter
 import re
 
 
@@ -21,6 +37,7 @@ rust_arg_re = re.compile(r'''^(?P<var>\w+)[\s:]*(?P<type>\w+)$''', re.VERBOSE)
 
 class RustXRefRole(XRefRole):
     def process_link(self, env, refnode, has_explicit_title, title, target):
+        print("has explicit title", has_explicit_title)
         if not has_explicit_title:
             target = target.lstrip('~')  # only has a meaning for the title
             # if the first character is a tilde, don't display the module/class
@@ -30,6 +47,9 @@ class RustXRefRole(XRefRole):
                 dot = title.rfind('.')
                 if dot != -1:
                     title = title[dot+1:]
+
+            print("title", title)
+            print("target", target)
             return title, target
 
 
@@ -48,6 +68,7 @@ class RustObject(ObjectDescription):
     option_spec = {
         'noindex': directives.flag,
         'crate': directives.unchanged,
+        'module': directives.unchanged,
         'impl': directives.unchanged
     }
 
@@ -55,10 +76,21 @@ class RustObject(ObjectDescription):
         return self.options.get('crate', self.env.temp_data.get('rust:crate'))
 
     def get_module(self):
-        return None
+        return self.options.get('module', self.env.temp_data.get('rust:module'))
 
     def get_implementation(self):
         pass
+
+    def _build_ref_node(self, target):
+        #print("building ref node")
+        # this is super broken
+        # ref = addnodes.pending_xref('', refdomain='rust', reftype='struct', reftarget=target)
+        # print(ref)
+        return nodes.Text(target)
+
+    def _build_type_node(self, typ):
+        print("build_type_node typ", typ)
+        return self._build_ref_node(typ)
 
     def get_index_text(self, crate, module, impl, name):
         """
@@ -79,11 +111,28 @@ class RustObject(ObjectDescription):
         fullname = "::".join(filter(None, (crate, module, name)))
         basename = fullname.partition('(')[0]
 
-        print("Fullname", fullname)
-        print("Basename", basename)
-        print("SIG", sig)
+        print("document ids", self.state.document.ids)
+        if fullname not in self.state.document.ids:
+            signode['names'].append(fullname)
+            signode['ids'].append(fullname)
+            signode['first'] = (not self.names)
+            self.state.document.note_explicit_target(signode)
+
+            objects = self.env.domaindata['rust']['objects']
+
+            if fullname in objects:
+                 self.state_machine.reporter.warning(
+                    'duplicate object description of %s, ' % fullname +
+                    'other instance in ' + self.env.doc2path(objects[fullname][0]) +
+                    ', use :noindex: for one of them',
+                    line=self.lineno)
+
+            objects[fullname] = (self.env.docname, self.objtype, basename)
+
 
         indextext = self.get_index_text(crate, None, None, basename)
+        print("indextext", indextext)
+        print("fullname", fullname)
         if indextext:
             self.indexnode['entries'].append(_create_indexnode(indextext, fullname))
 
@@ -112,17 +161,45 @@ class RustFunction(RustObject):
         """
         handle the signature of the directive
         """
-        print("handling struct signature: ", sig)
 
         sig_match = rust_function_sig_re.match(sig)
         name = sig_match.group("name")
         mods = sig_match.group("mods")
+        args = sig_match.group("args")
+        ret = sig_match.group("return")
 
-        formatted_mods = formatter.output_modifiers(mods).build()
+        # formatted_mods = formatter.output_modifiers(mods).build()
         signode += nodes.Text(mods + ' ', mods + ' ')
         signode += nodes.Text('fn ', 'fn ')
 
+        # function name
         signode += addnodes.desc_name(name, name)
+
+        # function arguments
+        paramlist = addnodes.desc_parameterlist()
+        if args is not None:
+            args = [x.strip() for x in args.split(',')]
+  
+            for arg in args:
+                param = addnodes.desc_parameter('', '', noemph=True)
+                arg_match = rust_arg_re.match(arg)
+                typ = arg_match.group("type")
+                var = arg_match.group("var")
+                param += nodes.emphasis(var, var)
+                param += nodes.Text(': ', ': ')
+                param += self._build_type_node(typ)
+                print('just build type node')
+
+                paramlist += param
+
+        signode += paramlist
+
+        # return value
+        if ret is not None:
+            rnode = addnodes.desc_type('', '')
+            rnode += self._build_type_node(ret)
+            signode += nodes.Text(' -> ', ' -> ')
+            signode += rnode
 
         return name
 
@@ -168,6 +245,23 @@ class RustStruct(RustObject):
 class RustMember(RustObject):
     def get_index_text(self, crate, module, impl, name):
         return _('%s (Rust member)') % name
+
+    def handle_signature(self, sig, signode):
+        """
+        handle the signature of the directive
+        """
+
+        sig_match = rust_arg_re.match(sig.strip())
+        print("sig", sig)
+        name = sig_match.group("var")
+        typ = sig_match.group("type")
+
+        signode += addnodes.desc_name(name, name)
+        signode += nodes.Text(': ', ': ')
+        signode += self._build_type_node(typ)
+        print("rust member", name)
+
+        return sig
 
 
 class RustEnum(RustObject):
@@ -295,8 +389,16 @@ class RustDomain(Domain):
         # Partial function to make building the response easier
         make_ref = lambda fullname: make_refnode(builder, fromdocname, objects[fullname][0], fullname, contnode, fullname)
 
+        print("objects", objects)
+        print("target", target)
+
+        # try finding a fully qualified reference
         if target in objects:
             return make_ref(target)
+
+        # try finding an external documentation reference
+
+
 
     def get_objects(self):
         for refname, (docname, type, _) in self.data['objects'].items():
