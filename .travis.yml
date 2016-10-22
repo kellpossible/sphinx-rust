@@ -12,3 +12,4 @@ script:
 
 after_success:
   - "travis-sphinx deploy"
+  - "ls -la target/doc/build"
