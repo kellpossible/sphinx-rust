@@ -1,0 +1,13 @@
+language: python
+python:
+  - "3.5"
+
+install:
+  - "pip install -e ."
+  - "pip install travis-sphinx"
+
+script:
+  - "travis-sphinx build"
+
+after_success:
+  - "travis-sphinx deploy"
